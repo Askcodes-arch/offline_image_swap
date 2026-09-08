@@ -7,13 +7,14 @@ from PIL import Image
 
 class FaceSwap:
     """
-    Lightweight CPU-based face replacement engine.
+    Lightweight CPU face replacement engine.
 
-    Uses OpenCV Haar Cascade.
-    No AI model, GPU, CUDA, or Internet required.
+    Uses OpenCV Haar Cascade only.
+    No Internet, CUDA, GPU, or large AI model required.
     """
 
     def __init__(self, cascade_path):
+
         self.cascade_path = cascade_path
 
         self.face_detector = cv2.CascadeClassifier(
@@ -32,20 +33,16 @@ class FaceSwap:
     # =========================================================
 
     def detect_faces(self, image):
-        """Detect faces and return (x, y, w, h)."""
 
         if image is None:
             raise ValueError(
                 "Image is empty."
             )
 
-        if len(image.shape) == 2:
-            gray = image
-        else:
-            gray = cv2.cvtColor(
-                image,
-                cv2.COLOR_BGR2GRAY
-            )
+        gray = cv2.cvtColor(
+            image,
+            cv2.COLOR_BGR2GRAY
+        )
 
         gray = cv2.equalizeHist(
             gray
@@ -64,7 +61,6 @@ class FaceSwap:
         return list(faces)
 
     def largest_face(self, faces):
-        """Return the largest detected face."""
 
         if not faces:
             return None
@@ -78,18 +74,38 @@ class FaceSwap:
     # FACE CROP
     # =========================================================
 
-    def _crop_face(
-        self,
-        image,
-        face
-    ):
-        """Extract a face from an image."""
+    def _crop_face(self, image, face):
 
         x, y, w, h = face
 
+        # Expand crop slightly.
+        # This gives the blending area some surrounding skin.
+        expand_x = int(w * 0.18)
+        expand_y = int(h * 0.20)
+
+        x1 = max(
+            0,
+            x - expand_x
+        )
+
+        y1 = max(
+            0,
+            y - expand_y
+        )
+
+        x2 = min(
+            image.shape[1],
+            x + w + expand_x
+        )
+
+        y2 = min(
+            image.shape[0],
+            y + h + expand_y
+        )
+
         crop = image[
-            y:y + h,
-            x:x + w
+            y1:y2,
+            x1:x2
         ]
 
         if crop.size == 0:
@@ -100,68 +116,73 @@ class FaceSwap:
         return crop.copy()
 
     # =========================================================
-    # RESIZE
+    # COLOR MATCHING
     # =========================================================
 
-    def _resize_face(
+    def _match_color(
         self,
-        face,
-        width,
-        height
-    ):
-        return cv2.resize(
-            face,
-            (width, height),
-            interpolation=cv2.INTER_AREA
-        )
-
-    # =========================================================
-    # COLOR CORRECTION
-    # =========================================================
-
-    def _color_correct(
-        self,
-        source_face,
-        target_face
+        source,
+        target
     ):
         """
-        Basic color/brightness matching.
+        Match source brightness/color statistics
+        to the target region.
         """
 
-        source_float = source_face.astype(
+        source_float = source.astype(
             np.float32
         )
 
-        target_float = target_face.astype(
+        target_float = target.astype(
             np.float32
         )
 
         source_mean = np.mean(
             source_float,
-            axis=(0, 1),
-            keepdims=True
+            axis=(0, 1)
         )
 
         target_mean = np.mean(
             target_float,
-            axis=(0, 1),
-            keepdims=True
+            axis=(0, 1)
         )
 
-        result = (
-            source_float
-            - source_mean
-            + target_mean
+        source_std = np.std(
+            source_float,
+            axis=(0, 1)
         )
+
+        target_std = np.std(
+            target_float,
+            axis=(0, 1)
+        )
+
+        source_std[
+            source_std < 1.0
+        ] = 1.0
+
+        result = (
+            (
+                source_float
+                - source_mean
+            )
+            *
+            (
+                target_std
+                / source_std
+            )
+        ) + target_mean
 
         return np.clip(
             result,
             0,
             255
-        ).astype(np.uint8)
+        ).astype(
+            np.uint8
+        )
 
     # =========================================================
-    # MASK
+    # SOFT FACE MASK
     # =========================================================
 
     def _create_mask(
@@ -169,9 +190,6 @@ class FaceSwap:
         width,
         height
     ):
-        """
-        Create a soft elliptical mask.
-        """
 
         mask = np.zeros(
             (height, width),
@@ -186,11 +204,11 @@ class FaceSwap:
         axes = (
             max(
                 1,
-                int(width * 0.42)
+                int(width * 0.40)
             ),
             max(
                 1,
-                int(height * 0.47)
+                int(height * 0.45)
             )
         )
 
@@ -205,24 +223,55 @@ class FaceSwap:
             -1
         )
 
-        blur = max(
-            3,
-            int(
-                min(width, height)
-                * 0.08
-            )
+        blur_size = int(
+            min(width, height) * 0.10
         )
 
-        if blur % 2 == 0:
-            blur += 1
+        blur_size = max(
+            5,
+            blur_size
+        )
+
+        if blur_size % 2 == 0:
+            blur_size += 1
 
         mask = cv2.GaussianBlur(
             mask,
-            (blur, blur),
+            (
+                blur_size,
+                blur_size
+            ),
             0
         )
 
+        # Keep the outer edges very soft.
+        mask = np.clip(
+            mask,
+            0.0,
+            1.0
+        )
+
         return mask
+
+    # =========================================================
+    # ALIGNED FACE
+    # =========================================================
+
+    def _prepare_face(
+        self,
+        source_face,
+        width,
+        height
+    ):
+
+        return cv2.resize(
+            source_face,
+            (
+                width,
+                height
+            ),
+            interpolation=cv2.INTER_AREA
+        )
 
     # =========================================================
     # BLEND
@@ -234,34 +283,34 @@ class FaceSwap:
         replacement,
         face
     ):
-        """
-        Blend a replacement face into target.
-        """
 
         x, y, w, h = face
 
-        target_height, target_width = (
-            target.shape[:2]
-        )
+        target_height = target.shape[0]
+        target_width = target.shape[1]
+
+        # Expand destination area.
+        expand_x = int(w * 0.18)
+        expand_y = int(h * 0.20)
 
         x1 = max(
             0,
-            x
+            x - expand_x
         )
 
         y1 = max(
             0,
-            y
+            y - expand_y
         )
 
         x2 = min(
             target_width,
-            x + w
+            x + w + expand_x
         )
 
         y2 = min(
             target_height,
-            y + h
+            y + h + expand_y
         )
 
         if x1 >= x2 or y1 >= y2:
@@ -270,7 +319,7 @@ class FaceSwap:
         width = x2 - x1
         height = y2 - y1
 
-        replacement = self._resize_face(
+        replacement = self._prepare_face(
             replacement,
             width,
             height
@@ -281,7 +330,7 @@ class FaceSwap:
             x1:x2
         ]
 
-        replacement = self._color_correct(
+        replacement = self._match_color(
             replacement,
             target_region
         )
@@ -291,26 +340,44 @@ class FaceSwap:
             height
         )
 
-        mask = mask[:, :, np.newaxis]
+        # Slightly stronger center.
+        mask = np.power(
+            mask,
+            0.85
+        )
 
-        result = (
-            replacement.astype(
-                np.float32
-            ) * mask
+        mask = mask[
+            :,
+            :,
+            np.newaxis
+        ]
+
+        source_float = replacement.astype(
+            np.float32
+        )
+
+        target_float = target_region.astype(
+            np.float32
+        )
+
+        blended = (
+            source_float * mask
             +
-            target_region.astype(
-                np.float32
-            ) * (1.0 - mask)
+            target_float * (
+                1.0 - mask
+            )
         )
 
         target[
             y1:y2,
             x1:x2
         ] = np.clip(
-            result,
+            blended,
             0,
             255
-        ).astype(np.uint8)
+        ).astype(
+            np.uint8
+        )
 
         return target
 
@@ -323,9 +390,6 @@ class FaceSwap:
         target,
         replacement
     ):
-        """
-        Replace the largest face in target.
-        """
 
         if target is None:
             raise ValueError(
@@ -370,14 +434,16 @@ class FaceSwap:
 
         result = target.copy()
 
-        return self._blend_face(
+        result = self._blend_face(
             result,
             replacement_crop,
             target_face
         )
 
+        return result
+
     # =========================================================
-    # ALL FACE SWAP
+    # ALL FACES
     # =========================================================
 
     def swap_all_faces(
@@ -385,10 +451,6 @@ class FaceSwap:
         target,
         replacement
     ):
-        """
-        Replace every detected target face
-        with the same replacement face.
-        """
 
         if target is None:
             raise ValueError(
@@ -440,12 +502,11 @@ class FaceSwap:
         return result
 
     # =========================================================
-    # PIL / OPENCV CONVERSION
+    # PIL / OPENCV
     # =========================================================
 
     @staticmethod
     def pil_to_cv(image):
-        """PIL RGB -> OpenCV BGR."""
 
         rgb = np.array(
             image.convert("RGB")
@@ -458,7 +519,6 @@ class FaceSwap:
 
     @staticmethod
     def cv_to_pil(image):
-        """OpenCV BGR -> PIL RGB."""
 
         rgb = cv2.cvtColor(
             image,
@@ -470,7 +530,7 @@ class FaceSwap:
         )
 
     # =========================================================
-    # GIF FRAME PROCESSING
+    # GIF FRAME
     # =========================================================
 
     def process_gif_frame(
@@ -479,9 +539,6 @@ class FaceSwap:
         replacement,
         replace_all=False
     ):
-        """
-        Process one GIF frame.
-        """
 
         cv_frame = self.pil_to_cv(
             frame
@@ -525,24 +582,13 @@ class FaceSwap:
         max_frames=300,
         progress_callback=None
     ):
-        """
-        Process an animated GIF frame by frame.
-
-        max_width:
-            Maximum output width.
-
-        max_frames:
-            Maximum number of frames.
-
-        progress_callback:
-            Function receiving current,total.
-        """
 
         replacement = cv2.imread(
             replacement_path
         )
 
         if replacement is None:
+
             raise RuntimeError(
                 "Could not read replacement image."
             )
@@ -552,6 +598,7 @@ class FaceSwap:
         )
 
         if not replacement_faces:
+
             del replacement
 
             raise RuntimeError(
@@ -575,8 +622,8 @@ class FaceSwap:
             if total_frames > max_frames:
 
                 raise RuntimeError(
-                    "GIF contains {} frames.\n\n"
-                    "Maximum allowed: {} frames."
+                    "GIF has {} frames. "
+                    "Maximum is {} frames."
                     .format(
                         total_frames,
                         max_frames
@@ -656,7 +703,7 @@ class FaceSwap:
             if not processed_frames:
 
                 raise RuntimeError(
-                    "No usable GIF frames."
+                    "No GIF frames were processed."
                 )
 
             first = processed_frames[0]
@@ -686,7 +733,7 @@ class FaceSwap:
             del replacement
 
     # =========================================================
-    # CREATE GIF FROM IMAGES
+    # CREATE GIF FROM MULTIPLE IMAGES
     # =========================================================
 
     def create_gif(
@@ -696,9 +743,6 @@ class FaceSwap:
         delay=500,
         max_width=960
     ):
-        """
-        Create an animated GIF from images.
-        """
 
         if not image_paths:
 
