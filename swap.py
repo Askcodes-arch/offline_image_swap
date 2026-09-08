@@ -2,37 +2,37 @@
 
 import cv2
 import numpy as np
+from PIL import Image
 
 
 class FaceSwap:
     """
-    Lightweight CPU-based face replacement engine.
+    Lightweight CPU face-swap engine.
 
     Uses OpenCV Haar Cascade for face detection.
-    Designed for low-memory computers.
+    No AI model, GPU, CUDA, or Internet required.
     """
 
     def __init__(self, cascade_path):
         self.cascade_path = cascade_path
 
         self.face_detector = cv2.CascadeClassifier(
-            self.cascade_path
+            cascade_path
         )
 
         if self.face_detector.empty():
             raise RuntimeError(
-                "Could not load Haar Cascade:\n{}".format(
-                    self.cascade_path
+                "Could not load face detector:\n{}".format(
+                    cascade_path
                 )
             )
 
-    def detect_faces(self, image):
-        """
-        Detect faces in an image.
+    # ---------------------------------------------------------
+    # FACE DETECTION
+    # ---------------------------------------------------------
 
-        Returns:
-            List of (x, y, w, h) face rectangles.
-        """
+    def detect_faces(self, image):
+        """Return detected faces as (x, y, w, h)."""
 
         if image is None:
             raise ValueError("Image is empty.")
@@ -42,14 +42,13 @@ class FaceSwap:
             cv2.COLOR_BGR2GRAY
         )
 
-        # Improve detection without requiring GPU.
         gray = cv2.equalizeHist(gray)
 
         faces = self.face_detector.detectMultiScale(
             gray,
             scaleFactor=1.1,
             minNeighbors=5,
-            minSize=(50, 50)
+            minSize=(40, 40)
         )
 
         if faces is None:
@@ -57,14 +56,71 @@ class FaceSwap:
 
         return list(faces)
 
-    def _color_correct(self, source_face, target_face):
+    def largest_face(self, faces):
+        """Return the largest detected face."""
+
+        if not faces:
+            return None
+
+        return max(
+            faces,
+            key=lambda f: f[2] * f[3]
+        )
+
+    # ---------------------------------------------------------
+    # FACE PREPARATION
+    # ---------------------------------------------------------
+
+    def _crop_face(self, image, face):
+        """Crop a detected face."""
+
+        x, y, w, h = face
+
+        crop = image[
+            y:y + h,
+            x:x + w
+        ]
+
+        if crop.size == 0:
+            raise RuntimeError(
+                "Could not extract face."
+            )
+
+        return crop.copy()
+
+    def _resize_face(
+        self,
+        face,
+        width,
+        height
+    ):
+        return cv2.resize(
+            face,
+            (width, height),
+            interpolation=cv2.INTER_AREA
+        )
+
+    # ---------------------------------------------------------
+    # COLOR CORRECTION
+    # ---------------------------------------------------------
+
+    def _color_correct(
+        self,
+        source_face,
+        target_face
+    ):
         """
-        Match the replacement face's average color to the
-        target face.
+        Match average color of replacement face
+        to the target area.
         """
 
-        source_float = source_face.astype(np.float32)
-        target_float = target_face.astype(np.float32)
+        source_float = source_face.astype(
+            np.float32
+        )
+
+        target_float = target_face.astype(
+            np.float32
+        )
 
         source_mean = np.mean(
             source_float,
@@ -78,37 +134,29 @@ class FaceSwap:
             keepdims=True
         )
 
-        corrected = (
+        result = (
             source_float
             - source_mean
             + target_mean
         )
 
-        corrected = np.clip(
-            corrected,
+        return np.clip(
+            result,
             0,
             255
-        )
+        ).astype(np.uint8)
 
-        return corrected.astype(np.uint8)
+    # ---------------------------------------------------------
+    # MASK
+    # ---------------------------------------------------------
 
-    def _resize_face(self, face, width, height):
+    def _create_mask(
+        self,
+        width,
+        height
+    ):
         """
-        Resize replacement face to target face size.
-        """
-
-        return cv2.resize(
-            face,
-            (width, height),
-            interpolation=cv2.INTER_AREA
-        )
-
-    def _create_mask(self, width, height):
-        """
-        Create a soft elliptical mask.
-
-        The soft edge makes the replacement blend better
-        with the surrounding image.
+        Create a soft elliptical face mask.
         """
 
         mask = np.zeros(
@@ -122,8 +170,8 @@ class FaceSwap:
         )
 
         axes = (
-            max(1, int(width * 0.43)),
-            max(1, int(height * 0.48))
+            max(1, int(width * 0.42)),
+            max(1, int(height * 0.47))
         )
 
         cv2.ellipse(
@@ -137,42 +185,42 @@ class FaceSwap:
             -1
         )
 
-        # Blur the edge for smooth blending.
-        blur_size = max(
+        blur = max(
             3,
             int(min(width, height) * 0.08)
         )
 
-        if blur_size % 2 == 0:
-            blur_size += 1
+        if blur % 2 == 0:
+            blur += 1
 
         mask = cv2.GaussianBlur(
             mask,
-            (blur_size, blur_size),
+            (blur, blur),
             0
         )
 
         return mask
 
+    # ---------------------------------------------------------
+    # SINGLE FACE BLEND
+    # ---------------------------------------------------------
+
     def _blend_face(
         self,
         target,
         replacement,
-        x,
-        y,
-        w,
-        h
+        face
     ):
         """
-        Blend replacement face into target image.
+        Blend replacement face into target.
         """
 
-        if w <= 0 or h <= 0:
-            return target
+        x, y, w, h = face
 
-        target_height, target_width = target.shape[:2]
+        target_height, target_width = (
+            target.shape[:2]
+        )
 
-        # Keep coordinates inside image boundaries.
         x1 = max(0, x)
         y1 = max(0, y)
 
@@ -189,13 +237,13 @@ class FaceSwap:
         if x1 >= x2 or y1 >= y2:
             return target
 
-        actual_width = x2 - x1
-        actual_height = y2 - y1
+        width = x2 - x1
+        height = y2 - y1
 
         replacement = self._resize_face(
             replacement,
-            actual_width,
-            actual_height
+            width,
+            height
         )
 
         target_region = target[
@@ -209,50 +257,50 @@ class FaceSwap:
         )
 
         mask = self._create_mask(
-            actual_width,
-            actual_height
+            width,
+            height
         )
 
         mask = mask[:, :, np.newaxis]
 
-        blended = (
-            replacement.astype(np.float32) * mask
+        result = (
+            replacement.astype(
+                np.float32
+            ) * mask
             +
-            target_region.astype(np.float32) * (1.0 - mask)
+            target_region.astype(
+                np.float32
+            ) * (1.0 - mask)
         )
-
-        blended = np.clip(
-            blended,
-            0,
-            255
-        ).astype(np.uint8)
 
         target[
             y1:y2,
             x1:x2
-        ] = blended
+        ] = np.clip(
+            result,
+            0,
+            255
+        ).astype(np.uint8)
 
         return target
 
-    def swap(self, source, replacement):
+    # ---------------------------------------------------------
+    # SINGLE IMAGE SWAP
+    # ---------------------------------------------------------
+
+    def swap(
+        self,
+        target,
+        replacement
+    ):
         """
-        Replace the first detected face in `source`
-        with the first detected face from `replacement`.
-
-        Args:
-            source:
-                Target image.
-
-            replacement:
-                Image containing the replacement face.
-
-        Returns:
-            Processed BGR image.
+        Replace the largest face in target
+        with the largest face in replacement.
         """
 
-        if source is None:
+        if target is None:
             raise ValueError(
-                "Source image is empty."
+                "Target image is empty."
             )
 
         if replacement is None:
@@ -260,57 +308,303 @@ class FaceSwap:
                 "Replacement image is empty."
             )
 
-        source_faces = self.detect_faces(source)
+        target_faces = self.detect_faces(
+            target
+        )
 
-        if len(source_faces) == 0:
+        replacement_faces = self.detect_faces(
+            replacement
+        )
+
+        if not target_faces:
             raise RuntimeError(
-                "No face detected in source image."
+                "No face detected in target image."
+            )
+
+        if not replacement_faces:
+            raise RuntimeError(
+                "No face detected in replacement image."
+            )
+
+        target_face = self.largest_face(
+            target_faces
+        )
+
+        replacement_face = self.largest_face(
+            replacement_faces
+        )
+
+        replacement_crop = self._crop_face(
+            replacement,
+            replacement_face
+        )
+
+        result = target.copy()
+
+        result = self._blend_face(
+            result,
+            replacement_crop,
+            target_face
+        )
+
+        return result
+
+    # ---------------------------------------------------------
+    # MULTIPLE FACES
+    # ---------------------------------------------------------
+
+    def swap_all_faces(
+        self,
+        target,
+        replacement
+    ):
+        """
+        Replace every detected target face with
+        the same replacement face.
+        """
+
+        target_faces = self.detect_faces(
+            target
+        )
+
+        replacement_faces = self.detect_faces(
+            replacement
+        )
+
+        if not target_faces:
+            raise RuntimeError(
+                "No face detected in target image."
+            )
+
+        if not replacement_faces:
+            raise RuntimeError(
+                "No face detected in replacement image."
+            )
+
+        replacement_face = self.largest_face(
+            replacement_faces
+        )
+
+        replacement_crop = self._crop_face(
+            replacement,
+            replacement_face
+        )
+
+        result = target.copy()
+
+        for face in target_faces:
+
+            result = self._blend_face(
+                result,
+                replacement_crop,
+                face
+            )
+
+        return result
+
+    # ---------------------------------------------------------
+    # GIF FRAME CONVERSION
+    # ---------------------------------------------------------
+
+    @staticmethod
+    def pil_to_cv(image):
+        """
+        PIL RGB image -> OpenCV BGR image.
+        """
+
+        rgb = np.array(
+            image.convert("RGB")
+        )
+
+        return cv2.cvtColor(
+            rgb,
+            cv2.COLOR_RGB2BGR
+        )
+
+    @staticmethod
+    def cv_to_pil(image):
+        """
+        OpenCV BGR image -> PIL RGB image.
+        """
+
+        rgb = cv2.cvtColor(
+            image,
+            cv2.COLOR_BGR2RGB
+        )
+
+        return Image.fromarray(
+            rgb
+        )
+
+    # ---------------------------------------------------------
+    # GIF FACE SWAP
+    # ---------------------------------------------------------
+
+    def process_gif_frame(
+        self,
+        frame,
+        replacement,
+        replace_all=False
+    ):
+        """
+        Process one GIF frame.
+
+        Args:
+            frame:
+                PIL RGB frame.
+
+            replacement:
+                OpenCV BGR replacement image.
+
+            replace_all:
+                Replace all detected faces if True.
+
+        Returns:
+            PIL RGB processed frame.
+        """
+
+        cv_frame = self.pil_to_cv(
+            frame
+        )
+
+        if replace_all:
+
+            result = self.swap_all_faces(
+                cv_frame,
+                replacement
+            )
+
+        else:
+
+            result = self.swap(
+                cv_frame,
+                replacement
+            )
+
+        return self.cv_to_pil(
+            result
+        )
+
+    def swap_gif(
+        self,
+        gif_path,
+        replacement_path,
+        output_path,
+        replace_all=False,
+        max_width=1280
+    ):
+        """
+        Face-swap an animated GIF frame by frame.
+
+        The GIF is processed sequentially to reduce
+        memory usage.
+        """
+
+        replacement = cv2.imread(
+            replacement_path
+        )
+
+        if replacement is None:
+            raise RuntimeError(
+                "Could not read replacement image."
             )
 
         replacement_faces = self.detect_faces(
             replacement
         )
 
-        if len(replacement_faces) == 0:
+        if not replacement_faces:
             raise RuntimeError(
                 "No face detected in replacement image."
             )
 
-        # Use the largest detected face.
-        source_face = max(
-            source_faces,
-            key=lambda face: face[2] * face[3]
+        gif = Image.open(
+            gif_path
         )
 
-        replacement_face = max(
-            replacement_faces,
-            key=lambda face: face[2] * face[3]
-        )
+        processed_frames = []
 
-        sx, sy, sw, sh = source_face
-        rx, ry, rw, rh = replacement_face
+        try:
 
-        replacement_crop = replacement[
-            ry:ry + rh,
-            rx:rx + rw
-        ]
-
-        if replacement_crop.size == 0:
-            raise RuntimeError(
-                "Could not extract replacement face."
+            frame_count = getattr(
+                gif,
+                "n_frames",
+                1
             )
 
-        # Work on a copy so the original source
-        # image remains unchanged.
-        result = source.copy()
+            for index in range(frame_count):
 
-        result = self._blend_face(
-            result,
-            replacement_crop,
-            sx,
-            sy,
-            sw,
-            sh
-        )
+                gif.seek(index)
 
-        return result
+                frame = gif.convert(
+                    "RGB"
+                )
+
+                # Reduce very large GIF frames.
+                if frame.width > max_width:
+
+                    new_height = int(
+                        frame.height
+                        * max_width
+                        / frame.width
+                    )
+
+                    frame = frame.resize(
+                        (
+                            max_width,
+                            new_height
+                        ),
+                        Image.LANCZOS
+                    )
+
+                try:
+
+                    processed = (
+                        self.process_gif_frame(
+                            frame,
+                            replacement,
+                            replace_all
+                        )
+                    )
+
+                    processed_frames.append(
+                        processed.copy()
+                    )
+
+                finally:
+
+                    frame.close()
+
+            if not processed_frames:
+                raise RuntimeError(
+                    "GIF contains no usable frames."
+                )
+
+            first = processed_frames[0]
+
+            first.save(
+                output_path,
+                save_all=True,
+                append_images=(
+                    processed_frames[1:]
+                ),
+                duration=gif.info.get(
+                    "duration",
+                    500
+                ),
+                loop=gif.info.get(
+                    "loop",
+                    0
+                ),
+                optimize=True
+            )
+
+        finally:
+
+            gif.close()
+
+            for frame in processed_frames:
+                try:
+                    frame.close()
+                except Exception:
+                    pass
