@@ -5,76 +5,125 @@ import numpy as np
 
 
 class FaceSwap:
-    def __init__(self, cascade_path):
-        self.detector = cv2.CascadeClassifier(cascade_path)
+    """
+    Lightweight CPU-based face replacement engine.
 
-        if self.detector.empty():
+    Uses OpenCV Haar Cascade for face detection.
+    Designed for low-memory computers.
+    """
+
+    def __init__(self, cascade_path):
+        self.cascade_path = cascade_path
+
+        self.face_detector = cv2.CascadeClassifier(
+            self.cascade_path
+        )
+
+        if self.face_detector.empty():
             raise RuntimeError(
-                "Could not load face detector: " + cascade_path
+                "Could not load Haar Cascade:\n{}".format(
+                    self.cascade_path
+                )
             )
 
-    def detect_face(self, image):
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    def detect_faces(self, image):
+        """
+        Detect faces in an image.
 
-        faces = self.detector.detectMultiScale(
+        Returns:
+            List of (x, y, w, h) face rectangles.
+        """
+
+        if image is None:
+            raise ValueError("Image is empty.")
+
+        gray = cv2.cvtColor(
+            image,
+            cv2.COLOR_BGR2GRAY
+        )
+
+        # Improve detection without requiring GPU.
+        gray = cv2.equalizeHist(gray)
+
+        faces = self.face_detector.detectMultiScale(
             gray,
             scaleFactor=1.1,
             minNeighbors=5,
-            minSize=(40, 40)
+            minSize=(50, 50)
         )
 
-        if len(faces) == 0:
-            return None
+        if faces is None:
+            return []
 
-        # Select largest detected face
-        faces = sorted(
-            faces,
-            key=lambda f: f[2] * f[3],
-            reverse=True
+        return list(faces)
+
+    def _color_correct(self, source_face, target_face):
+        """
+        Match the replacement face's average color to the
+        target face.
+        """
+
+        source_float = source_face.astype(np.float32)
+        target_float = target_face.astype(np.float32)
+
+        source_mean = np.mean(
+            source_float,
+            axis=(0, 1),
+            keepdims=True
         )
 
-        return faces[0]
+        target_mean = np.mean(
+            target_float,
+            axis=(0, 1),
+            keepdims=True
+        )
 
-    def swap(self, source, replacement):
-        source_face = self.detect_face(source)
-        replacement_face = self.detect_face(replacement)
+        corrected = (
+            source_float
+            - source_mean
+            + target_mean
+        )
 
-        if source_face is None:
-            raise RuntimeError("No face found in source image.")
+        corrected = np.clip(
+            corrected,
+            0,
+            255
+        )
 
-        if replacement_face is None:
-            raise RuntimeError("No face found in replacement image.")
+        return corrected.astype(np.uint8)
 
-        sx, sy, sw, sh = source_face
-        rx, ry, rw, rh = replacement_face
+    def _resize_face(self, face, width, height):
+        """
+        Resize replacement face to target face size.
+        """
 
-        # Crop replacement face
-        face = replacement[
-            ry:ry + rh,
-            rx:rx + rw
-        ]
-
-        if face.size == 0:
-            raise RuntimeError("Invalid replacement face.")
-
-        # Resize replacement face to target face size
-        face = cv2.resize(
+        return cv2.resize(
             face,
-            (sw, sh),
+            (width, height),
             interpolation=cv2.INTER_AREA
         )
 
-        # Create elliptical mask
-        mask = np.zeros((sh, sw), dtype=np.uint8)
+    def _create_mask(self, width, height):
+        """
+        Create a soft elliptical mask.
+
+        The soft edge makes the replacement blend better
+        with the surrounding image.
+        """
+
+        mask = np.zeros(
+            (height, width),
+            dtype=np.float32
+        )
 
         center = (
-            sw // 2,
-            sh // 2
+            width // 2,
+            height // 2
         )
 
         axes = (
-            max(1, int(sw * 0.45)),
-            max(1, int(sh * 0.48))
+            max(1, int(width * 0.43)),
+            max(1, int(height * 0.48))
         )
 
         cv2.ellipse(
@@ -84,38 +133,184 @@ class FaceSwap:
             0,
             0,
             360,
-            255,
+            1.0,
             -1
         )
 
-        # Slightly soften mask edges
+        # Blur the edge for smooth blending.
+        blur_size = max(
+            3,
+            int(min(width, height) * 0.08)
+        )
+
+        if blur_size % 2 == 0:
+            blur_size += 1
+
         mask = cv2.GaussianBlur(
             mask,
-            (15, 15),
+            (blur_size, blur_size),
             0
         )
 
-        # Put replacement into temporary image
-        result = source.copy()
+        return mask
 
-        roi = result[
-            sy:sy + sh,
-            sx:sx + sw
-        ]
+    def _blend_face(
+        self,
+        target,
+        replacement,
+        x,
+        y,
+        w,
+        h
+    ):
+        """
+        Blend replacement face into target image.
+        """
 
-        # Alpha blend
-        alpha = mask.astype(np.float32) / 255.0
-        alpha = alpha[:, :, np.newaxis]
+        if w <= 0 or h <= 0:
+            return target
 
-        blended = (
-            face.astype(np.float32) * alpha +
-            roi.astype(np.float32) * (1.0 - alpha)
+        target_height, target_width = target.shape[:2]
+
+        # Keep coordinates inside image boundaries.
+        x1 = max(0, x)
+        y1 = max(0, y)
+
+        x2 = min(
+            target_width,
+            x + w
         )
 
-        result[
-            sy:sy + sh,
-            sx:sx + sw
-        ] = blended.astype(np.uint8)
+        y2 = min(
+            target_height,
+            y + h
+        )
+
+        if x1 >= x2 or y1 >= y2:
+            return target
+
+        actual_width = x2 - x1
+        actual_height = y2 - y1
+
+        replacement = self._resize_face(
+            replacement,
+            actual_width,
+            actual_height
+        )
+
+        target_region = target[
+            y1:y2,
+            x1:x2
+        ]
+
+        replacement = self._color_correct(
+            replacement,
+            target_region
+        )
+
+        mask = self._create_mask(
+            actual_width,
+            actual_height
+        )
+
+        mask = mask[:, :, np.newaxis]
+
+        blended = (
+            replacement.astype(np.float32) * mask
+            +
+            target_region.astype(np.float32) * (1.0 - mask)
+        )
+
+        blended = np.clip(
+            blended,
+            0,
+            255
+        ).astype(np.uint8)
+
+        target[
+            y1:y2,
+            x1:x2
+        ] = blended
+
+        return target
+
+    def swap(self, source, replacement):
+        """
+        Replace the first detected face in `source`
+        with the first detected face from `replacement`.
+
+        Args:
+            source:
+                Target image.
+
+            replacement:
+                Image containing the replacement face.
+
+        Returns:
+            Processed BGR image.
+        """
+
+        if source is None:
+            raise ValueError(
+                "Source image is empty."
+            )
+
+        if replacement is None:
+            raise ValueError(
+                "Replacement image is empty."
+            )
+
+        source_faces = self.detect_faces(source)
+
+        if len(source_faces) == 0:
+            raise RuntimeError(
+                "No face detected in source image."
+            )
+
+        replacement_faces = self.detect_faces(
+            replacement
+        )
+
+        if len(replacement_faces) == 0:
+            raise RuntimeError(
+                "No face detected in replacement image."
+            )
+
+        # Use the largest detected face.
+        source_face = max(
+            source_faces,
+            key=lambda face: face[2] * face[3]
+        )
+
+        replacement_face = max(
+            replacement_faces,
+            key=lambda face: face[2] * face[3]
+        )
+
+        sx, sy, sw, sh = source_face
+        rx, ry, rw, rh = replacement_face
+
+        replacement_crop = replacement[
+            ry:ry + rh,
+            rx:rx + rw
+        ]
+
+        if replacement_crop.size == 0:
+            raise RuntimeError(
+                "Could not extract replacement face."
+            )
+
+        # Work on a copy so the original source
+        # image remains unchanged.
+        result = source.copy()
+
+        result = self._blend_face(
+            result,
+            replacement_crop,
+            sx,
+            sy,
+            sw,
+            sh
+        )
 
         return result
-
