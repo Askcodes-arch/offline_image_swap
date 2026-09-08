@@ -34,67 +34,71 @@ jobs:
       - name: Check project files
         shell: powershell
         run: |
-          Write-Host "=== Project files ==="
-          Get-ChildItem -Recurse -File | Select-Object FullName
+          if (!(Test-Path "main.py")) {
+              Write-Error "main.py is missing."
+              exit 1
+          }
 
-          Write-Host "=== Main Python file ==="
-          Get-Item main.py
+          if (!(Test-Path "swap.py")) {
+              Write-Error "swap.py is missing."
+              exit 1
+          }
 
-          Write-Host "=== Haar Cascade ==="
-          if (Test-Path "models\haarcascade_frontalface_default.xml") {
-            Write-Host "Haar Cascade found."
-          } else {
-            Write-Error "Haar Cascade file is missing!"
+          if (!(Test-Path "requirements.txt")) {
+              Write-Error "requirements.txt is missing."
+              exit 1
+          }
+
+          if (!(Test-Path "models\haarcascade_frontalface_default.xml")) {
+              Write-Error "Haar Cascade is missing."
+              exit 1
           }
 
       - name: Build EXE
+        shell: powershell
         run: |
           python -m PyInstaller `
-            --onefile `
+            --noconfirm `
+            --clean `
+            --onedir `
             --windowed `
             --name OfflineImageSwap `
+            --add-data "models;models" `
             main.py
 
-      - name: Verify EXE
+      - name: Verify build
         shell: powershell
         run: |
-          if (!(Test-Path "dist\OfflineImageSwap.exe")) {
-            Write-Error "EXE was not created!"
-            exit 1
+          if (!(Test-Path "dist\OfflineImageSwap\OfflineImageSwap.exe")) {
+              Write-Error "EXE was not created."
+              exit 1
           }
 
-          Write-Host "EXE successfully created:"
-          Get-Item "dist\OfflineImageSwap.exe"
+          if (!(Test-Path "dist\OfflineImageSwap\models\haarcascade_frontalface_default.xml")) {
+              Write-Error "Haar Cascade was not packaged."
+              exit 1
+          }
 
-      - name: Create release package
+      - name: Create runtime folders
         shell: powershell
         run: |
-          if (Test-Path "package") {
-            Remove-Item "package" -Recurse -Force
-          }
+          New-Item -ItemType Directory `
+            -Force `
+            -Path "dist\OfflineImageSwap\input" | Out-Null
 
-          New-Item -ItemType Directory -Force -Path "package" | Out-Null
+          New-Item -ItemType Directory `
+            -Force `
+            -Path "dist\OfflineImageSwap\output" | Out-Null
 
-          Copy-Item `
-            "dist\OfflineImageSwap.exe" `
-            "package\OfflineImageSwap.exe"
-
-          if (Test-Path "models") {
-            Copy-Item `
-              "models" `
-              "package\models" `
-              -Recurse `
-              -Force
-          }
-
-          if (Test-Path "README.md") {
-            Copy-Item `
-              "README.md" `
-              "package\README.md"
+      - name: Create ZIP package
+        shell: powershell
+        run: |
+          if (Test-Path "OfflineImageSwap-Windows.zip") {
+              Remove-Item "OfflineImageSwap-Windows.zip" -Force
           }
 
           Compress-Archive `
-            -Path "package\*" `
+            -Path "dist\OfflineImageSwap\*" `
             -DestinationPath "OfflineImageSwap-Windows.zip" `
             -Force
 
@@ -103,3 +107,4 @@ jobs:
         with:
           name: OfflineImageSwap-Windows
           path: OfflineImageSwap-Windows.zip
+          if-no-files-found: error
