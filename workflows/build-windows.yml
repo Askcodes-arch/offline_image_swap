@@ -1,0 +1,65 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-2019
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+          architecture: "x64"
+
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Install dependencies
+        run: |
+          pip install numpy==1.24.4
+          pip install opencv-python==4.8.1.78
+          pip install Pillow==10.4.0
+          pip install pyinstaller==5.13.2
+
+      - name: Build EXE
+        run: |
+          pyinstaller --onefile --windowed --name OfflineImageSwap main.py
+
+      - name: Copy model files
+        shell: powershell
+        run: |
+          if (Test-Path "models") {
+            Copy-Item -Path "models" -Destination "dist\models" -Recurse -Force
+          }
+
+      - name: Create release package
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path package
+          Copy-Item "dist\OfflineImageSwap.exe" "package\OfflineImageSwap.exe"
+
+          if (Test-Path "models") {
+            Copy-Item "models" "package\models" -Recurse -Force
+          }
+
+          if (Test-Path "README.md") {
+            Copy-Item "README.md" "package\README.md"
+          }
+
+          Compress-Archive -Path "package\*" -DestinationPath "OfflineImageSwap-Windows.zip" -Force
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: OfflineImageSwap-Windows
+          path: OfflineImageSwap-Windows.zip
