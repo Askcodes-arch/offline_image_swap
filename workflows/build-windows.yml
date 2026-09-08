@@ -34,8 +34,6 @@ jobs:
       - name: Check project files
         shell: powershell
         run: |
-          Write-Host "=== Checking project ==="
-
           if (!(Test-Path "main.py")) {
               Write-Error "main.py is missing."
               exit 1
@@ -56,53 +54,51 @@ jobs:
               exit 1
           }
 
-          Write-Host "All required files found."
-
       - name: Build EXE
         shell: powershell
         run: |
           python -m PyInstaller `
             --noconfirm `
             --clean `
-            --onefile `
+            --onedir `
             --windowed `
             --name OfflineImageSwap `
             --add-data "models;models" `
             main.py
 
-      - name: Verify EXE
+      - name: Verify build
         shell: powershell
         run: |
-          if (!(Test-Path "dist\OfflineImageSwap.exe")) {
+          if (!(Test-Path "dist\OfflineImageSwap\OfflineImageSwap.exe")) {
               Write-Error "EXE was not created."
               exit 1
           }
 
-          Write-Host "EXE successfully created."
-
-      - name: Create release package
-        shell: powershell
-        run: |
-          if (Test-Path "package") {
-              Remove-Item "package" -Recurse -Force
+          if (!(Test-Path "dist\OfflineImageSwap\models\haarcascade_frontalface_default.xml")) {
+              Write-Error "Haar Cascade was not packaged."
+              exit 1
           }
 
-          New-Item -ItemType Directory -Force -Path "package" | Out-Null
-          New-Item -ItemType Directory -Force -Path "package\input" | Out-Null
-          New-Item -ItemType Directory -Force -Path "package\output" | Out-Null
+      - name: Create runtime folders
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory `
+            -Force `
+            -Path "dist\OfflineImageSwap\input" | Out-Null
 
-          Copy-Item `
-            "dist\OfflineImageSwap.exe" `
-            "package\OfflineImageSwap.exe"
+          New-Item -ItemType Directory `
+            -Force `
+            -Path "dist\OfflineImageSwap\output" | Out-Null
 
-          if (Test-Path "README.md") {
-              Copy-Item `
-                "README.md" `
-                "package\README.md"
+      - name: Create ZIP package
+        shell: powershell
+        run: |
+          if (Test-Path "OfflineImageSwap-Windows.zip") {
+              Remove-Item "OfflineImageSwap-Windows.zip" -Force
           }
 
           Compress-Archive `
-            -Path "package\*" `
+            -Path "dist\OfflineImageSwap\*" `
             -DestinationPath "OfflineImageSwap-Windows.zip" `
             -Force
 
