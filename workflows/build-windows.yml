@@ -25,19 +25,35 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
 
       - name: Verify project files
         shell: cmd
         run: |
-          if not exist main.py exit /b 1
-          if not exist swap.py exit /b 1
-          if not exist models\haarcascade_frontalface_default.xml exit /b 1
+          if not exist main.py (
+            echo ERROR: main.py not found
+            exit /b 1
+          )
 
-      - name: Build application
+          if not exist swap.py (
+            echo ERROR: swap.py not found
+            exit /b 1
+          )
+
+          if not exist requirements.txt (
+            echo ERROR: requirements.txt not found
+            exit /b 1
+          )
+
+          if not exist models\haarcascade_frontalface_default.xml (
+            echo ERROR: Haar Cascade not found
+            exit /b 1
+          )
+
+      - name: Build EXE
         run: |
-          pyinstaller ^
+          python -m PyInstaller ^
             --noconfirm ^
             --clean ^
             --windowed ^
@@ -46,15 +62,41 @@ jobs:
             --add-data "models;models" ^
             main.py
 
-      - name: Create application directories
+      - name: Create runtime folders
         shell: cmd
         run: |
-          if not exist dist\OfflineImageSwap\input mkdir dist\OfflineImageSwap\input
-          if not exist dist\OfflineImageSwap\output mkdir dist\OfflineImageSwap\output
+          if not exist "dist\OfflineImageSwap\input" (
+            mkdir "dist\OfflineImageSwap\input"
+          )
 
-      - name: Upload Windows application
+          if not exist "dist\OfflineImageSwap\output" (
+            mkdir "dist\OfflineImageSwap\output"
+          )
+
+      - name: Verify EXE
+        shell: cmd
+        run: |
+          if not exist "dist\OfflineImageSwap\OfflineImageSwap.exe" (
+            echo ERROR: EXE was not created
+            exit /b 1
+          )
+
+          if not exist "dist\OfflineImageSwap\models\haarcascade_frontalface_default.xml" (
+            echo ERROR: Haar Cascade was not packaged
+            exit /b 1
+          )
+
+      - name: Package application
+        shell: powershell
+        run: |
+          Compress-Archive `
+            -Path "dist\OfflineImageSwap\*" `
+            -DestinationPath "dist\OfflineImageSwap-Windows.zip" `
+            -Force
+
+      - name: Upload EXE package
         uses: actions/upload-artifact@v4
         with:
           name: OfflineImageSwap-Windows
-          path: dist/OfflineImageSwap/
+          path: dist/OfflineImageSwap-Windows.zip
           if-no-files-found: error
