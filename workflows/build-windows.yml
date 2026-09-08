@@ -22,43 +22,83 @@ jobs:
 
       - name: Upgrade pip
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade "pip<25"
 
       - name: Install dependencies
         run: |
-          pip install numpy==1.24.4
-          pip install opencv-python==4.8.1.78
-          pip install Pillow==10.4.0
-          pip install pyinstaller==5.13.2
+          python -m pip install numpy==1.24.4
+          python -m pip install opencv-python==4.8.1.78
+          python -m pip install Pillow==10.4.0
+          python -m pip install pyinstaller==5.13.2
+
+      - name: Check project files
+        shell: powershell
+        run: |
+          Write-Host "=== Project files ==="
+          Get-ChildItem -Recurse -File | Select-Object FullName
+
+          Write-Host "=== Main Python file ==="
+          Get-Item main.py
+
+          Write-Host "=== Haar Cascade ==="
+          if (Test-Path "models\haarcascade_frontalface_default.xml") {
+            Write-Host "Haar Cascade found."
+          } else {
+            Write-Error "Haar Cascade file is missing!"
+          }
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed --name OfflineImageSwap main.py
+          python -m PyInstaller `
+            --onefile `
+            --windowed `
+            --name OfflineImageSwap `
+            main.py
 
-      - name: Copy model files
+      - name: Verify EXE
         shell: powershell
         run: |
-          if (Test-Path "models") {
-            Copy-Item -Path "models" -Destination "dist\models" -Recurse -Force
+          if (!(Test-Path "dist\OfflineImageSwap.exe")) {
+            Write-Error "EXE was not created!"
+            exit 1
           }
+
+          Write-Host "EXE successfully created:"
+          Get-Item "dist\OfflineImageSwap.exe"
 
       - name: Create release package
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path package
-          Copy-Item "dist\OfflineImageSwap.exe" "package\OfflineImageSwap.exe"
+          if (Test-Path "package") {
+            Remove-Item "package" -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force -Path "package" | Out-Null
+
+          Copy-Item `
+            "dist\OfflineImageSwap.exe" `
+            "package\OfflineImageSwap.exe"
 
           if (Test-Path "models") {
-            Copy-Item "models" "package\models" -Recurse -Force
+            Copy-Item `
+              "models" `
+              "package\models" `
+              -Recurse `
+              -Force
           }
 
           if (Test-Path "README.md") {
-            Copy-Item "README.md" "package\README.md"
+            Copy-Item `
+              "README.md" `
+              "package\README.md"
           }
 
-          Compress-Archive -Path "package\*" -DestinationPath "OfflineImageSwap-Windows.zip" -Force
+          Compress-Archive `
+            -Path "package\*" `
+            -DestinationPath "OfflineImageSwap-Windows.zip" `
+            -Force
 
-      - name: Upload EXE
+      - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
           name: OfflineImageSwap-Windows
