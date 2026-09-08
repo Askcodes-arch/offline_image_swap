@@ -22,7 +22,6 @@ CASCADE = os.path.join(
     "haarcascade_frontalface_default.xml"
 )
 
-
 SUPPORTED_IMAGES = (
     ".jpg",
     ".jpeg",
@@ -35,13 +34,28 @@ SUPPORTED_IMAGES = (
 class OfflineImageSwapApp:
 
     def __init__(self, root):
+
         self.root = root
-        self.root.title("Offline Image Swap")
-        self.root.geometry("900x650")
-        self.root.minsize(760, 560)
+
+        self.root.title(
+            "Offline Image Swap"
+        )
+
+        self.root.geometry(
+            "950x700"
+        )
+
+        self.root.minsize(
+            800,
+            600
+        )
 
         self.source_path = ""
         self.replacement_path = ""
+
+        self.gif_path = ""
+        self.gif_replacement_path = ""
+
         self.multi_paths = []
 
         self.source_preview = None
@@ -49,15 +63,26 @@ class OfflineImageSwapApp:
 
         self.engine = None
 
-        os.makedirs(INPUT_DIR, exist_ok=True)
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        os.makedirs(MODEL_DIR, exist_ok=True)
+        os.makedirs(
+            INPUT_DIR,
+            exist_ok=True
+        )
+
+        os.makedirs(
+            OUTPUT_DIR,
+            exist_ok=True
+        )
+
+        os.makedirs(
+            MODEL_DIR,
+            exist_ok=True
+        )
 
         self.create_interface()
 
-    # ---------------------------------------------------------
-    # INTERFACE
-    # ---------------------------------------------------------
+    # =========================================================
+    # MAIN INTERFACE
+    # =========================================================
 
     def create_interface(self):
 
@@ -66,16 +91,25 @@ class OfflineImageSwapApp:
             text="Offline Image Swap",
             font=("Arial", 20, "bold")
         )
-        title.pack(pady=(12, 4))
+
+        title.pack(
+            pady=(12, 2)
+        )
 
         subtitle = tk.Label(
             self.root,
-            text="CPU mode • Offline • Lightweight",
+            text="CPU • Offline • Lightweight",
             font=("Arial", 10)
         )
-        subtitle.pack(pady=(0, 10))
 
-        notebook = ttk.Notebook(self.root)
+        subtitle.pack(
+            pady=(0, 10)
+        )
+
+        notebook = ttk.Notebook(
+            self.root
+        )
+
         notebook.pack(
             fill="both",
             expand=True,
@@ -83,23 +117,31 @@ class OfflineImageSwapApp:
             pady=8
         )
 
-        self.single_tab = ttk.Frame(notebook)
-        self.multi_tab = ttk.Frame(notebook)
-        self.gif_tab = ttk.Frame(notebook)
+        self.single_tab = ttk.Frame(
+            notebook
+        )
+
+        self.multi_tab = ttk.Frame(
+            notebook
+        )
+
+        self.gif_tab = ttk.Frame(
+            notebook
+        )
 
         notebook.add(
             self.single_tab,
-            text="  Image Swap  "
+            text=" Image Swap "
         )
 
         notebook.add(
             self.multi_tab,
-            text="  Multiple Images  "
+            text=" Multiple Images "
         )
 
         notebook.add(
             self.gif_tab,
-            text="  GIF  "
+            text=" GIF Face Swap "
         )
 
         self.create_single_tab()
@@ -117,20 +159,22 @@ class OfflineImageSwapApp:
             relief="sunken",
             padx=8
         )
+
         status.pack(
             fill="x",
             side="bottom"
         )
 
-    # ---------------------------------------------------------
-    # SINGLE IMAGE TAB
-    # ---------------------------------------------------------
+    # =========================================================
+    # IMAGE SWAP TAB
+    # =========================================================
 
     def create_single_tab(self):
 
         controls = ttk.Frame(
             self.single_tab
         )
+
         controls.pack(
             fill="x",
             padx=15,
@@ -139,7 +183,7 @@ class OfflineImageSwapApp:
 
         ttk.Button(
             controls,
-            text="Select Target Image",
+            text="Select Target",
             command=self.select_source
         ).grid(
             row=0,
@@ -150,7 +194,7 @@ class OfflineImageSwapApp:
 
         ttk.Button(
             controls,
-            text="Select Replacement Face",
+            text="Select Replacement",
             command=self.select_replacement
         ).grid(
             row=0,
@@ -170,35 +214,33 @@ class OfflineImageSwapApp:
             pady=5
         )
 
-        controls.columnconfigure(
-            3,
-            weight=1
-        )
-
         self.source_label = ttk.Label(
             self.single_tab,
             text="Target: No image selected"
         )
+
         self.source_label.pack(
             anchor="w",
             padx=20,
-            pady=5
+            pady=4
         )
 
         self.replacement_label = ttk.Label(
             self.single_tab,
             text="Replacement: No image selected"
         )
+
         self.replacement_label.pack(
             anchor="w",
             padx=20,
-            pady=5
+            pady=4
         )
 
-        preview_frame = ttk.Frame(
+        preview = ttk.Frame(
             self.single_tab
         )
-        preview_frame.pack(
+
+        preview.pack(
             fill="both",
             expand=True,
             padx=15,
@@ -206,9 +248,10 @@ class OfflineImageSwapApp:
         )
 
         left = ttk.LabelFrame(
-            preview_frame,
+            preview,
             text="Target"
         )
+
         left.pack(
             side="left",
             fill="both",
@@ -217,9 +260,10 @@ class OfflineImageSwapApp:
         )
 
         right = ttk.LabelFrame(
-            preview_frame,
+            preview,
             text="Replacement"
         )
+
         right.pack(
             side="right",
             fill="both",
@@ -231,6 +275,7 @@ class OfflineImageSwapApp:
             left,
             text="No image"
         )
+
         self.source_preview_label.pack(
             fill="both",
             expand=True
@@ -240,20 +285,22 @@ class OfflineImageSwapApp:
             right,
             text="No image"
         )
+
         self.replacement_preview_label.pack(
             fill="both",
             expand=True
         )
 
-    # ---------------------------------------------------------
+    # =========================================================
     # MULTIPLE IMAGE TAB
-    # ---------------------------------------------------------
+    # =========================================================
 
     def create_multi_tab(self):
 
         top = ttk.Frame(
             self.multi_tab
         )
+
         top.pack(
             fill="x",
             padx=15,
@@ -282,6 +329,7 @@ class OfflineImageSwapApp:
             self.multi_tab,
             selectmode=tk.EXTENDED
         )
+
         self.multi_list.pack(
             fill="both",
             expand=True,
@@ -292,6 +340,7 @@ class OfflineImageSwapApp:
         bottom = ttk.Frame(
             self.multi_tab
         )
+
         bottom.pack(
             fill="x",
             padx=15,
@@ -300,7 +349,7 @@ class OfflineImageSwapApp:
 
         ttk.Label(
             bottom,
-            text="Frame delay (ms):"
+            text="Delay (ms):"
         ).pack(
             side="left"
         )
@@ -326,19 +375,19 @@ class OfflineImageSwapApp:
             text="Create GIF",
             command=self.create_multi_gif
         ).pack(
-            side="right",
-            padx=5
+            side="right"
         )
 
-    # ---------------------------------------------------------
-    # GIF TAB
-    # ---------------------------------------------------------
+    # =========================================================
+    # GIF FACE SWAP TAB
+    # =========================================================
 
     def create_gif_tab(self):
 
         frame = ttk.Frame(
             self.gif_tab
         )
+
         frame.pack(
             fill="both",
             expand=True,
@@ -348,59 +397,119 @@ class OfflineImageSwapApp:
 
         ttk.Label(
             frame,
-            text="Create an animated GIF from multiple images.",
-            font=("Arial", 12)
+            text="GIF Face Swap",
+            font=("Arial", 16, "bold")
         ).pack(
-            pady=10
-        )
-
-        ttk.Button(
-            frame,
-            text="Select Images",
-            command=self.add_multiple_images
-        ).pack(
-            pady=8
+            pady=(10, 5)
         )
 
         ttk.Label(
             frame,
-            text="Frame delay (milliseconds)"
+            text=(
+                "Select an animated GIF and a replacement "
+                "face image."
+            )
         ).pack(
-            pady=(20, 4)
+            pady=(0, 15)
         )
-
-        self.gif_delay_var = tk.IntVar(
-            value=500
-        )
-
-        ttk.Spinbox(
-            frame,
-            from_=50,
-            to=10000,
-            increment=50,
-            textvariable=self.gif_delay_var,
-            width=10
-        ).pack()
 
         ttk.Button(
             frame,
-            text="Create GIF",
-            command=self.create_multi_gif
+            text="Select GIF",
+            command=self.select_gif
+        ).pack(
+            pady=5
+        )
+
+        self.gif_label = ttk.Label(
+            frame,
+            text="GIF: Not selected"
+        )
+
+        self.gif_label.pack(
+            pady=5
+        )
+
+        ttk.Button(
+            frame,
+            text="Select Replacement Face",
+            command=self.select_gif_replacement
+        ).pack(
+            pady=5
+        )
+
+        self.gif_replacement_label = ttk.Label(
+            frame,
+            text="Replacement: Not selected"
+        )
+
+        self.gif_replacement_label.pack(
+            pady=5
+        )
+
+        options = ttk.Frame(
+            frame
+        )
+
+        options.pack(
+            pady=20
+        )
+
+        self.replace_all_var = tk.BooleanVar(
+            value=False
+        )
+
+        ttk.Checkbutton(
+            options,
+            text="Replace all detected faces",
+            variable=self.replace_all_var
+        ).pack(
+            pady=5
+        )
+
+        ttk.Label(
+            options,
+            text="Maximum GIF width:"
+        ).pack(
+            side="left",
+            padx=(0, 5)
+        )
+
+        self.gif_width_var = tk.IntVar(
+            value=1280
+        )
+
+        ttk.Spinbox(
+            options,
+            from_=320,
+            to=1920,
+            increment=160,
+            textvariable=self.gif_width_var,
+            width=8
+        ).pack(
+            side="left"
+        )
+
+        ttk.Button(
+            frame,
+            text="Start GIF Face Swap",
+            command=self.start_gif_swap
         ).pack(
             pady=20
         )
 
-        self.gif_info = ttk.Label(
+        self.gif_status_label = ttk.Label(
             frame,
-            text="No images selected."
+            text="Ready."
         )
-        self.gif_info.pack(
+
+        self.gif_status_label.pack(
             pady=10
         )
 
-    # ---------------------------------------------------------
+    # =========================================================
     # FILE SELECTION
-    # ---------------------------------------------------------
+    # =========================================================
 
     def select_source(self):
 
@@ -421,13 +530,14 @@ class OfflineImageSwapApp:
         self.source_path = path
 
         self.source_label.config(
-            text="Target: {}".format(path)
+            text="Target: {}".format(
+                path
+            )
         )
 
         self.show_preview(
             path,
-            self.source_preview_label,
-            "source"
+            self.source_preview_label
         )
 
         self.status_var.set(
@@ -453,18 +563,79 @@ class OfflineImageSwapApp:
         self.replacement_path = path
 
         self.replacement_label.config(
-            text="Replacement: {}".format(path)
+            text="Replacement: {}".format(
+                path
+            )
         )
 
         self.show_preview(
             path,
-            self.replacement_preview_label,
-            "replacement"
+            self.replacement_preview_label
         )
 
         self.status_var.set(
             "Replacement image selected."
         )
+
+    def select_gif(self):
+
+        path = filedialog.askopenfilename(
+            title="Select animated GIF",
+            filetypes=[
+                (
+                    "GIF files",
+                    "*.gif"
+                ),
+                ("All files", "*.*")
+            ]
+        )
+
+        if not path:
+            return
+
+        self.gif_path = path
+
+        self.gif_label.config(
+            text="GIF: {}".format(
+                path
+            )
+        )
+
+        self.status_var.set(
+            "GIF selected."
+        )
+
+    def select_gif_replacement(self):
+
+        path = filedialog.askopenfilename(
+            title="Select replacement face",
+            filetypes=[
+                (
+                    "Image files",
+                    "*.jpg *.jpeg *.png *.bmp *.webp"
+                ),
+                ("All files", "*.*")
+            ]
+        )
+
+        if not path:
+            return
+
+        self.gif_replacement_path = path
+
+        self.gif_replacement_label.config(
+            text="Replacement: {}".format(
+                path
+            )
+        )
+
+        self.status_var.set(
+            "GIF replacement image selected."
+        )
+
+    # =========================================================
+    # MULTIPLE IMAGES
+    # =========================================================
 
     def add_multiple_images(self):
 
@@ -485,17 +656,15 @@ class OfflineImageSwapApp:
         for path in paths:
 
             if path not in self.multi_paths:
-                self.multi_paths.append(path)
+
+                self.multi_paths.append(
+                    path
+                )
+
                 self.multi_list.insert(
                     tk.END,
                     os.path.basename(path)
                 )
-
-        self.gif_info.config(
-            text="{} image(s) selected.".format(
-                len(self.multi_paths)
-            )
-        )
 
         self.status_var.set(
             "{} image(s) selected.".format(
@@ -512,28 +681,25 @@ class OfflineImageSwapApp:
             tk.END
         )
 
-        self.gif_info.config(
-            text="No images selected."
-        )
-
         self.status_var.set(
             "Image list cleared."
         )
 
-    # ---------------------------------------------------------
+    # =========================================================
     # PREVIEW
-    # ---------------------------------------------------------
+    # =========================================================
 
     def show_preview(
         self,
         path,
-        label,
-        preview_type
+        label
     ):
 
         try:
 
-            image = Image.open(path)
+            image = Image.open(
+                path
+            )
 
             image.thumbnail(
                 (360, 360),
@@ -551,29 +717,25 @@ class OfflineImageSwapApp:
 
             label.image = photo
 
-            if preview_type == "source":
-                self.source_preview = photo
-            else:
-                self.replacement_preview = photo
+            image.close()
 
-        except Exception as error:
+        except Exception:
 
             label.config(
                 image="",
                 text="Preview unavailable"
             )
 
-            self.status_var.set(
-                "Preview error: {}".format(error)
-            )
-
-    # ---------------------------------------------------------
+    # =========================================================
     # ENGINE
-    # ---------------------------------------------------------
+    # =========================================================
 
     def get_engine(self):
 
-        if not os.path.exists(CASCADE):
+        if not os.path.exists(
+            CASCADE
+        ):
+
             raise RuntimeError(
                 "Face detector not found:\n{}".format(
                     CASCADE
@@ -581,34 +743,39 @@ class OfflineImageSwapApp:
             )
 
         if self.engine is None:
+
             self.engine = FaceSwap(
                 CASCADE
             )
 
         return self.engine
 
-    # ---------------------------------------------------------
+    # =========================================================
     # IMAGE SWAP
-    # ---------------------------------------------------------
+    # =========================================================
 
     def start_swap(self):
 
         if not self.source_path:
+
             messagebox.showwarning(
                 "Missing image",
-                "Please select the target image."
+                "Select a target image first."
             )
+
             return
 
         if not self.replacement_path:
+
             messagebox.showwarning(
                 "Missing image",
-                "Please select the replacement image."
+                "Select a replacement image first."
             )
+
             return
 
         self.status_var.set(
-            "Processing..."
+            "Processing image..."
         )
 
         thread = threading.Thread(
@@ -631,11 +798,13 @@ class OfflineImageSwapApp:
             )
 
             if source is None:
+
                 raise RuntimeError(
                     "Could not read target image."
                 )
 
             if replacement is None:
+
                 raise RuntimeError(
                     "Could not read replacement image."
                 )
@@ -652,16 +821,15 @@ class OfflineImageSwapApp:
                 "result.jpg"
             )
 
-            success = cv2.imwrite(
+            if not cv2.imwrite(
                 output_path,
                 result,
                 [
                     cv2.IMWRITE_JPEG_QUALITY,
                     95
                 ]
-            )
+            ):
 
-            if not success:
                 raise RuntimeError(
                     "Could not save output image."
                 )
@@ -682,22 +850,25 @@ class OfflineImageSwapApp:
                 )
             )
 
-    def swap_finished(self, output_path):
+    def swap_finished(
+        self,
+        output_path
+    ):
 
         self.status_var.set(
-            "Swap complete."
+            "Image swap complete."
         )
 
         messagebox.showinfo(
             "Success",
-            "Image saved to:\n\n{}".format(
+            "Output saved to:\n\n{}".format(
                 output_path
             )
         )
 
-    # ---------------------------------------------------------
-    # GIF CREATION
-    # ---------------------------------------------------------
+    # =========================================================
+    # MULTI IMAGE GIF
+    # =========================================================
 
     def create_multi_gif(self):
 
@@ -713,7 +884,7 @@ class OfflineImageSwapApp:
         try:
 
             delay = int(
-                self.gif_delay_var.get()
+                self.multi_delay_var.get()
             )
 
         except Exception:
@@ -725,30 +896,40 @@ class OfflineImageSwapApp:
         )
 
         thread = threading.Thread(
-            target=self.perform_gif,
+            target=self.perform_multi_gif,
             args=(delay,),
             daemon=True
         )
 
         thread.start()
 
-    def perform_gif(self, delay):
+    def perform_multi_gif(
+        self,
+        delay
+    ):
 
         frames = []
 
         try:
 
+            max_width = 1280
+            max_height = 1280
+
             for path in self.multi_paths:
 
-                image = Image.open(path)
+                image = Image.open(
+                    path
+                )
 
                 image = image.convert(
                     "RGB"
                 )
 
-                # Keep memory usage reasonable.
                 image.thumbnail(
-                    (1280, 1280),
+                    (
+                        max_width,
+                        max_height
+                    ),
                     Image.LANCZOS
                 )
 
@@ -759,11 +940,11 @@ class OfflineImageSwapApp:
                 image.close()
 
             if not frames:
+
                 raise RuntimeError(
-                    "No usable images found."
+                    "No usable images."
                 )
 
-            # Make all frames the same size.
             width = max(
                 frame.width
                 for frame in frames
@@ -780,7 +961,10 @@ class OfflineImageSwapApp:
 
                 canvas = Image.new(
                     "RGB",
-                    (width, height),
+                    (
+                        width,
+                        height
+                    ),
                     "black"
                 )
 
@@ -831,6 +1015,7 @@ class OfflineImageSwapApp:
         except Exception as error:
 
             for frame in frames:
+
                 try:
                     frame.close()
                 except Exception:
@@ -843,28 +1028,151 @@ class OfflineImageSwapApp:
                 )
             )
 
-    def gif_finished(self, output_path):
+    # =========================================================
+    # GIF FACE SWAP
+    # =========================================================
+
+    def start_gif_swap(self):
+
+        if not self.gif_path:
+
+            messagebox.showwarning(
+                "Missing GIF",
+                "Select a GIF first."
+            )
+
+            return
+
+        if not self.gif_replacement_path:
+
+            messagebox.showwarning(
+                "Missing replacement",
+                "Select a replacement face image."
+            )
+
+            return
+
+        try:
+
+            max_width = int(
+                self.gif_width_var.get()
+            )
+
+        except Exception:
+
+            max_width = 1280
+
+        self.status_var.set(
+            "Processing GIF..."
+        )
+
+        self.gif_status_label.config(
+            text="Processing GIF..."
+        )
+
+        thread = threading.Thread(
+            target=self.perform_gif_swap,
+            args=(max_width,),
+            daemon=True
+        )
+
+        thread.start()
+
+    def perform_gif_swap(
+        self,
+        max_width
+    ):
+
+        try:
+
+            engine = self.get_engine()
+
+            output_path = os.path.join(
+                OUTPUT_DIR,
+                "face_swap.gif"
+            )
+
+            engine.swap_gif(
+                self.gif_path,
+                self.gif_replacement_path,
+                output_path,
+                replace_all=self.replace_all_var.get(),
+                max_width=max_width
+            )
+
+            self.root.after(
+                0,
+                lambda: self.gif_swap_finished(
+                    output_path
+                )
+            )
+
+        except Exception as error:
+
+            self.root.after(
+                0,
+                lambda: self.show_error(
+                    str(error)
+                )
+            )
+
+    def gif_swap_finished(
+        self,
+        output_path
+    ):
+
+        self.status_var.set(
+            "GIF face swap complete."
+        )
+
+        self.gif_status_label.config(
+            text="Complete."
+        )
+
+        messagebox.showinfo(
+            "GIF Complete",
+            "GIF saved to:\n\n{}".format(
+                output_path
+            )
+        )
+
+    # =========================================================
+    # COMMON
+    # =========================================================
+
+    def gif_finished(
+        self,
+        output_path
+    ):
 
         self.status_var.set(
             "GIF created."
         )
 
         messagebox.showinfo(
-            "GIF complete",
+            "GIF Complete",
             "GIF saved to:\n\n{}".format(
                 output_path
             )
         )
 
-    # ---------------------------------------------------------
-    # ERROR
-    # ---------------------------------------------------------
-
-    def show_error(self, error):
+    def show_error(
+        self,
+        error
+    ):
 
         self.status_var.set(
             "Error."
         )
+
+        try:
+
+            self.gif_status_label.config(
+                text="Error."
+            )
+
+        except Exception:
+            pass
 
         messagebox.showerror(
             "Error",
@@ -876,7 +1184,7 @@ def main():
 
     root = tk.Tk()
 
-    app = OfflineImageSwapApp(
+    OfflineImageSwapApp(
         root
     )
 
