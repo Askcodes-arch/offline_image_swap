@@ -7,8 +7,8 @@ on:
       - main
 
 jobs:
-  build:
-    runs-on: windows-2019
+  build-windows:
+    runs-on: windows-latest
 
     steps:
       - name: Checkout repository
@@ -18,88 +18,43 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.8"
-          architecture: "x64"
 
       - name: Upgrade pip
         run: |
-          python -m pip install --upgrade "pip<25"
+          python -m pip install --upgrade pip
 
       - name: Install dependencies
         run: |
-          python -m pip install numpy==1.24.4
-          python -m pip install opencv-python==4.8.1.78
-          python -m pip install Pillow==10.4.0
-          python -m pip install pyinstaller==5.13.2
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-      - name: Check project files
-        shell: powershell
+      - name: Verify project files
+        shell: cmd
         run: |
-          Write-Host "=== Project files ==="
-          Get-ChildItem -Recurse -File | Select-Object FullName
+          if not exist main.py exit /b 1
+          if not exist swap.py exit /b 1
+          if not exist models\haarcascade_frontalface_default.xml exit /b 1
 
-          Write-Host "=== Main Python file ==="
-          Get-Item main.py
-
-          Write-Host "=== Haar Cascade ==="
-          if (Test-Path "models\haarcascade_frontalface_default.xml") {
-            Write-Host "Haar Cascade found."
-          } else {
-            Write-Error "Haar Cascade file is missing!"
-          }
-
-      - name: Build EXE
+      - name: Build application
         run: |
-          python -m PyInstaller `
-            --onefile `
-            --windowed `
-            --name OfflineImageSwap `
+          pyinstaller ^
+            --noconfirm ^
+            --clean ^
+            --windowed ^
+            --onedir ^
+            --name OfflineImageSwap ^
+            --add-data "models;models" ^
             main.py
 
-      - name: Verify EXE
-        shell: powershell
+      - name: Create application directories
+        shell: cmd
         run: |
-          if (!(Test-Path "dist\OfflineImageSwap.exe")) {
-            Write-Error "EXE was not created!"
-            exit 1
-          }
+          if not exist dist\OfflineImageSwap\input mkdir dist\OfflineImageSwap\input
+          if not exist dist\OfflineImageSwap\output mkdir dist\OfflineImageSwap\output
 
-          Write-Host "EXE successfully created:"
-          Get-Item "dist\OfflineImageSwap.exe"
-
-      - name: Create release package
-        shell: powershell
-        run: |
-          if (Test-Path "package") {
-            Remove-Item "package" -Recurse -Force
-          }
-
-          New-Item -ItemType Directory -Force -Path "package" | Out-Null
-
-          Copy-Item `
-            "dist\OfflineImageSwap.exe" `
-            "package\OfflineImageSwap.exe"
-
-          if (Test-Path "models") {
-            Copy-Item `
-              "models" `
-              "package\models" `
-              -Recurse `
-              -Force
-          }
-
-          if (Test-Path "README.md") {
-            Copy-Item `
-              "README.md" `
-              "package\README.md"
-          }
-
-          Compress-Archive `
-            -Path "package\*" `
-            -DestinationPath "OfflineImageSwap-Windows.zip" `
-            -Force
-
-      - name: Upload Windows package
+      - name: Upload Windows application
         uses: actions/upload-artifact@v4
         with:
           name: OfflineImageSwap-Windows
-          path: OfflineImageSwap-Windows.zip
+          path: dist/OfflineImageSwap/
+          if-no-files-found: error
